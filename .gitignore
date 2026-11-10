@@ -1,0 +1,9 @@
+# Ignore the environment variables file containing secrets
+rag/.env
+
+# Ignore the Python virtual environment folder (saves space and prevents binary leaks)
+rag/.venv/
+
+# Ignore Python cache files
+**/__pycache__/
+*.py[cod]

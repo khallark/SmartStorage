@@ -4,6 +4,9 @@ rag/.env
 # Ignore the Python virtual environment folder (saves space and prevents binary leaks)
 rag/.venv/
 
+# Ignore the generated vector store (rebuild with: python -m rag_engine.ingest)
+rag/rag_engine/db/
+
 # Ignore Python cache files
 **/__pycache__/
 *.py[cod]

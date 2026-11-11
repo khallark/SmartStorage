@@ -1,14 +1,16 @@
 from langchain_core.messages import HumanMessage, SystemMessage
-from .config import DOCS_DIR, TOP_K
+from .config import DOCS_DIR, TOP_K, MAX_HISTORY_MESSAGES
 from .loaders import load_documents
 from .chunking import split_documents
-from .llm import create_input
+from .llm import create_input, create_rewrite_input, to_messages, REWRITE_SYSTEM_PROMPT
 
 class RAGPipeline:
-    def __init__(self, vector_store, llm, top_k: int = TOP_K):
+    def __init__(self, vector_store, llm, rewriter_llm=None, top_k: int = TOP_K):
         self.vector_store = vector_store
         self.retriever = vector_store.as_retriever(search_kwargs={"k": top_k})
         self.llm = llm
+        self.rewriter_llm = rewriter_llm or llm
+    
     
     def ingest(self, docs_path=DOCS_DIR):
         documents = load_documents(docs_path)
@@ -17,17 +19,26 @@ class RAGPipeline:
         return len(chunks)
 
 
-    async def answer(self, query: str):
-        relevant_docs = await self.retriever.ainvoke(query)
+    async def rewrite(self, question: str, history: list[dict]) -> str:
+        messages = [
+            SystemMessage(content=REWRITE_SYSTEM_PROMPT),
+            HumanMessage(content=create_rewrite_input(question, history))
+        ]
+        result = await self.rewriter_llm.ainvoke(messages)
+        return result.content.strip()
+
+
+    async def answer(self, question: str, history: list[dict] | None = None):
+        history = (history or [])[-MAX_HISTORY_MESSAGES:]
+        search_query = await self.rewrite(question, history) if history else question
+        relevant_docs = await self.retriever.ainvoke(search_query)
         messages = [
             SystemMessage(content="You are a helpful assistant."),
-            HumanMessage(content=create_input(query, relevant_docs)),
+            # *to_messages(history),
+            HumanMessage(content=create_input(search_query, relevant_docs)),
         ]
         result = await self.llm.ainvoke(messages)
         return {
             "answer": result.content,
-            "sources": [
-                {"source": doc.metadata.get("source"), "excerpt": doc.page_content[:200]}
-                for doc in relevant_docs
-            ],
+            "question": search_query
         }
